@@ -19,33 +19,54 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Select Latest Stable Xcode
+      - name: Select Xcode with iOS SDK
         run: |
-          STABLE_XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -v -i "beta" | sort -V | tail -n 1 || true)
-          if [ -n "$STABLE_XCODE" ]; then
-            echo "Using Xcode: $STABLE_XCODE"
-            sudo xcode-select -s "$STABLE_XCODE/Contents/Developer"
+          if ! xcodebuild -showsdks 2>/dev/null | grep -q "iphoneos"; then
+            for XC in $(ls -d /Applications/Xcode*.app 2>/dev/null | grep -v -i "beta" | sort -V -r); do
+              if ls "$XC/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS"*.sdk >/dev/null 2>&1; then
+                echo "Switching to $XC"
+                sudo xcode-select -s "$XC/Contents/Developer"
+                break
+              fi
+            done
           fi
           xcodebuild -version
+          xcodebuild -showsdks
 
       - name: Build SkyHop (Release - iphoneos arm64)
         run: |
+          set +e
           xcodebuild clean build \
             -project SkyHop.xcodeproj \
-            -scheme SkyHop \
+            -target SkyHop \
             -configuration Release \
             -sdk iphoneos \
-            -destination "generic/platform=iOS" \
-            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            SYMROOT="$RUNNER_TEMP/BuildProducts" \
+            OBJROOT="$RUNNER_TEMP/BuildIntermediates" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            > "$RUNNER_TEMP/xcodebuild.log" 2>&1
+          EXIT_CODE=$?
+          cat "$RUNNER_TEMP/xcodebuild.log"
+          if [ $EXIT_CODE -ne 0 ]; then
+            grep -E "error:|fatal error:" "$RUNNER_TEMP/xcodebuild.log" | head -n 15 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit $EXIT_CODE
+          fi
 
       - name: Package SkyHop.ipa
         run: |
-          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/SkyHop.app"
+          APP_PATH="$RUNNER_TEMP/BuildProducts/Release-iphoneos/SkyHop.app"
           if [ ! -d "$APP_PATH" ]; then
-            echo "Error: SkyHop.app was not found at $APP_PATH"
+            echo "::error::SkyHop.app was not found at $APP_PATH"
+            ls -la "$RUNNER_TEMP/BuildProducts" || true
             exit 1
           fi
 

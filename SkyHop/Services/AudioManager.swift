@@ -143,7 +143,7 @@ final class AudioManager {
         guard !isPrepared else { return }
         isPrepared = true
 
-        Task.detached(priority: .userInitiated) {
+        Task.detached(priority: .userInitiated) { [weak self] in
             let flapWAV = AudioSynthesizer.makeFlapWAV()
             let scoreWAV = AudioSynthesizer.makeScoreWAV()
             let milestoneWAV = AudioSynthesizer.makeMilestoneWAV()
@@ -152,7 +152,7 @@ final class AudioManager {
             let unlockWAV = AudioSynthesizer.makeUnlockWAV()
             let musicWAV = AudioSynthesizer.makeSkyIslandLoopWAV()
 
-            await MainActor.run { [weak self] in
+            await MainActor.run {
                 guard let self else { return }
                 self.registerPool(for: .flap, data: flapWAV, count: 4)
                 self.registerPool(for: .score, data: scoreWAV, count: 3)

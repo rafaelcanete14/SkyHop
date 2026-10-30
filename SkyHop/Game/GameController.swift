@@ -1,5 +1,6 @@
 import SwiftUI
 import SpriteKit
+import UIKit
 import Combine
 
 /// Coordinates state transitions between the SpriteKit `GameScene`, persistent `GameDataStore`,
