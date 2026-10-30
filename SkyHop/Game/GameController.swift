@@ -35,7 +35,7 @@ final class GameController: ObservableObject, GameSceneEventsDelegate {
         AudioManager.shared.startBackgroundMusic()
 
         // Reactively forward settings and skin changes
-        dataStore.$settings
+        self.dataStore.$settings
             .sink { [weak self] newSettings in
                 guard let self else { return }
                 AudioManager.shared.apply(settings: newSettings)
@@ -44,7 +44,7 @@ final class GameController: ObservableObject, GameSceneEventsDelegate {
             }
             .store(in: &cancellables)
 
-        dataStore.$selectedSkinID
+        self.dataStore.$selectedSkinID
             .sink { [weak self] _ in
                 guard let self else { return }
                 self.scene.applyConfiguration(settings: self.dataStore.settings, skin: self.dataStore.selectedSkin)
