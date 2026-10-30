@@ -1,0 +1,81 @@
+name: Build Sky Hop iOS IPA
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-ipa:
+    name: Build Unsigned IPA (iPhone 16 Pro Max / iOS 18+)
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Select Latest Stable Xcode
+        run: |
+          STABLE_XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -v -i "beta" | sort -V | tail -n 1 || true)
+          if [ -n "$STABLE_XCODE" ]; then
+            echo "Using Xcode: $STABLE_XCODE"
+            sudo xcode-select -s "$STABLE_XCODE/Contents/Developer"
+          fi
+          xcodebuild -version
+
+      - name: Build SkyHop (Release - iphoneos arm64)
+        run: |
+          xcodebuild clean build \
+            -project SkyHop.xcodeproj \
+            -scheme SkyHop \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package SkyHop.ipa
+        run: |
+          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/SkyHop.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Error: SkyHop.app was not found at $APP_PATH"
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$APP_PATH" "$RUNNER_TEMP/ipa/Payload/SkyHop.app"
+
+          # Apply ad-hoc signature structure so Sideloadly / AltStore / SideStore re-sign cleanly
+          codesign --force --deep --sign - --timestamp=none "$RUNNER_TEMP/ipa/Payload/SkyHop.app"
+
+          cd "$RUNNER_TEMP/ipa"
+          zip -qry "$GITHUB_WORKSPACE/SkyHop.ipa" Payload
+          ls -lh "$GITHUB_WORKSPACE/SkyHop.ipa"
+
+      - name: Upload SkyHop.ipa Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkyHop-iOS-IPA
+          path: SkyHop.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish SkyHop.ipa to GitHub Releases
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Sky Hop v1.0.${{ github.run_number }} (iPhone 16 Pro Max IPA)"
+          body: |
+            ### Sky Hop (`SkyHop.ipa`)
+            - **Target:** iPhone 16 Pro Max (iOS 18.0+, 120Hz ProMotion)
+            - **Install from Windows 11:** Download **`SkyHop.ipa`** below and install onto your iPhone using **Sideloadly** or **AltStore** with your Apple ID.
+          files: SkyHop.ipa
+          make_latest: true
